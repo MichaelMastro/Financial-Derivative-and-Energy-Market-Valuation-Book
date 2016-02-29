@@ -1,0 +1,160 @@
+function LikeSum = A3Mloglikelihoodfn(param)%,knownParam) %,tau,Obs
+% A3Mloglikelihoodfn returns negative of 
+% log Maximum Likelihood Estimation
+% of process parameters fit to observation data
+% with the Kalman filter
+global tau
+global Obs
+global knownParam
+global latent
+global MRvec
+
+%{
+disp('param')
+disp(param )
+size(param)
+disp('knownParam')
+disp(knownParam)
+size(knownParam)
+size(tau)
+size(Obs)
+%}
+
+kappaY = knownParam(1);
+lambda = knownParam(2);
+muJ = knownParam(3);
+sigJ = knownParam(4);
+dt = knownParam(5);
+nObs=knownParam(6);
+nsamples=knownParam(7);
+
+muChi = param(1);
+kappaChi = param(2);
+sigChi = param(3);
+muE = param(4);
+kappaE = param(5);
+sigE = param(6);
+rho  = param(7); 
+phiChi =param(8);
+
+% Kalman filter equations are described by 
+% x(t) = M*x(t-1) + C + w   w~N(0,Q)
+% z = Obs = Hx + d + v    v~N(0,R)
+
+% if Directly Observing Price -> Observation Matrix = 1 (or Identity)
+    H = ones(nObs,2); % H=1; 
+    H(:,1) = exp(-kappaChi*tau(1,:));
+% Measurement Noise Covariance is small but non-zero
+    R = diag(0.1*ones(nObs,1)); 
+% Nomikos suggests Zero Measurement Noise of Spot
+% but here we will simply make smaller
+    R(1,1)=0.001; 
+% State Transition Matrix M
+% Chi (short term variation) exponential decay (exp(-lambdaChi*dt))
+% Epsilon (long term rate)  drifts at rate (muE-0.5*sigE^2*dt)
+    M = [exp(-kappaChi*dt), 0; 0, 1];
+    C = [0; muE-0.5*sigE^2*dt];
+    % Q = State Space Process Variance
+    % include if-else if searching for process w/ lambda~0
+    if (kappaChi==0) 
+        Q=sig*sig*(dt);
+        Q(1,1)=sigChi*sigChi*dt;  
+        Q(1,2)=rho*sigE*sigChi*dt;
+        Q(2,1)=Q(1,2);
+        Q(2,2)=sigE*sigE*dt;
+    else
+        Q(1,1)=sigChi*sigChi*( (1-exp(-2.*kappaChi.*dt))...
+            ./ (2.*kappaChi));  
+        Q(1,2)=rho*sigE*sigChi*( (1-exp(-kappaChi.*dt))...
+            ./ kappaChi);
+        Q(2,1)=Q(1,2);
+        Q(2,2)=sigE*sigE*dt;
+    end
+    
+	%nsamples=length(Obs);%size(Obs,2);
+	LikeSum=0.5*nsamples*log(2*pi);
+    % Create Crude Initial Estimation of Latent Variable
+% H not square -> use Moore-Penrose pseudoinverse of the matrix
+    x=[Obs(1,1)-Obs(end,1) ;Obs(end,1)];%invH*Obs(:,1)  
+%Initialize Covariance to Unconditional Variance of State Process
+    P=Q;
+    
+%%%% Step Forward in Time %%%%%%%%%%%%%%%%%%%%%
+%approach avoids saving every a-priori and a-posteriori variable
+for i=2:nsamples  
+    H(:,1) = exp(-kappaChi*tau(i,:));
+    %H(:,2) = ones(nObs,1); % 
+
+% Integrate Jump Component
+    djump=zeros(1,nObs);
+    maxj=5; jcount=linspace(0,maxj,maxj);
+    deltaTau=tau(i,:)/maxj;
+    for j=1:maxj
+        TauChop=(j-0.5)*deltaTau;
+        djump=djump+(exp(muJ*exp(-kappaY*TauChop)...
+            +0.5*sigJ^2*exp(-2*kappaY*TauChop))-1);
+    end
+    djump=lambda*djump.*deltaTau;
+        
+    d=(sigChi^2/(4*kappaChi))*(1-exp(-2.*kappaChi.*tau(i,:)))...
+        -((phiChi-rho*sigE*sigChi)/kappaChi)...
+           *(1-exp(-kappaChi.*tau(i,:))) + muE*tau(i,:) + djump;
+   
+        x = M*x+C;      %x(k|k-1) State Prediction
+        P = M*P*M'+ Q;  %P(k|k-1) Covariance Prediction
+
+        MR = Obs(:,i) - H*x-d'; %Measurement (Innovation)  Residual
+		V = H*P*H' + R ;   %Residual (Innovation) Covariance
+        K = P*H' * inv(V); %Kalman Gain
+        
+        x = x + K*(MR); 
+        %x(k|k) State Correction bassed on observation res.
+        P = P - K*H*P;  %P(k|k) Covariance Correction
+        %the max. likelihood was multiplied by -1 
+        %to give a minimum for fminsearch
+   
+        LikeSumNew=0.5*log(det(V))+0.5*MR'*(V\MR); 
+            %MR'*(V\MR) = MR'*inv(V)*MR;
+
+        if (isnan(LikeSumNew))
+            disp('i'); disp(i)
+            disp('inv(V)');  inv(V)
+            disp('%%%%%%%%%%%%%%isnan(LikeSumNew)')
+            disp('MR'); MR
+            disp('Obs(:,i)');   Obs(:,i) 
+            disp('H*x');        H*x
+            disp('MR-prime*inv(V)*MR');     MR'*inv(V)*MR
+            disp('det V')
+            det(V)
+            disp ('log det V')
+            log(det(V))
+            break  
+           % LikeSum=LikeSum*10;
+           % disp('NaN LikeSumNew');
+        end
+        
+           %else
+            LikeSum=LikeSum+LikeSumNew;%0.5*log(det(V))+0.5*MR'*inv(V)*MR;%+1e-10;
+       % end
+       % if (LikeSum == NaN)
+%            disp('NaN LikeSum')
+ %       end
+     latent(i,:)=x;
+    %    Vvec(i)=det(V);
+        MRvec(i,:)=MR;
+      %  LikeVec(i)=LikeSum;
+    end
+   % figure; 
+   % subplot(3,1,1)
+   % plot(1:nsamples,MRvec)%(:,1),1:nsamples,MR(:,2))
+   %     subplot(3,1,2)
+   %plot(1:nsamples,LikeVec)
+   % subplot(3,1,3)
+   % plot (1:nsamples,Vvec)
+   if ((sigE<=0)||(sigChi<=0)||(kappaE<0)||(kappaChi<0))
+       LikeSum=LikeSum+1e7;
+   end
+   
+end
+
+

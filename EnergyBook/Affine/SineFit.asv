@@ -1,0 +1,14 @@
+function SquaredSineFit =  SineFit (par)
+% SquaredSineFit finds Squared Error of 
+% deviation (in Season Function) and Long Run Mean
+% versus 
+    global time
+    global S
+    amp1=par(1);
+    phase1=par(2);
+    amp2=par(3);
+    phase2=par(4);
+    LongRunMean=par(5);
+    SquaredSineFit=...
+        sum((Season(par,time)+LongRunMean-S).^2);
+end

@@ -1,0 +1,97 @@
+% FFToptionScript
+% MertonScript shows increase in call value of Merton
+% with jumps vs. Black-Scholes without jumps
+% underlying Black-Scholes volatility assumed equal
+
+close all; clear all; clc
+set(0,'defaultaxeslinewidth',2); set(0,'defaultlinelinewidth',2);
+set(0,'defaultaxesFontWeight','bold');set(0,'defaulttextFontWeight','bold') 
+set(0,'defaultaxesfontsize',14); set(0,'defaulttextfontsize',14);
+
+T=1;        Ttext=['T = ' num2str(T)];    
+r=0.05;     rtext=['r = ' num2str(r)];    
+S0=100;     S0text=['S_0 = ' num2str(S0)];    
+
+%%% Black-Scholes Parameters %%%
+volBS = 0.2; Voltext=['\sigma_{BS} = ' num2str(volBS)];    
+d=0;
+
+CharFunc='phiBS'
+
+Param.T=T;
+Param.sigmaBS=volBS;
+Param.S0=S0;
+Param.r=r;
+Param.mu=r-0.5*Param.sigmaBS^2; %risk-neutral BS
+
+[cBSfft, k ] = FFToption ( CharFunc, Param );
+K=S0*exp(k);   %%%%%%%K is normalized to S0 in FFT calc
+
+cBSanalytical = BlackScholesCall (K,S0,T,volBS,r,d);
+
+figure
+plot (K, cBSanalytical, K, S0* cBSfft, '+', K, S0-K)
+legend ('Analytical BS', 'FFT BS')
+xlim ([0.5, 1.5*S0])
+ylim([0.1 100])
+bsStr(1)= {'Black-Scholes'};
+bsStr(2)= {rtext};
+bsStr(3)= {Voltext};
+text(0.8*S0, 0.6*S0, bsStr)
+
+genStr(1)= {S0text};
+genStr(2)= {Ttext}; 
+text(0.2*S0, 0.2*S0, genStr);
+
+%%% Merton Series %%%
+muJ = 0.1;       
+sigmaJ = 0.1;    
+lambda = 0.5;    
+mmuJtext=['\mu_{Jump} = ' num2str(muJ)];    
+msigmaJtext=['\sigma_{Jump} = ' num2str(sigmaJ)];    
+lambdatext=['\lambda = ' num2str(lambda)];    
+
+CharFunc='phiMerton'
+
+Param.muJ=muJ;
+Param.sigmaJ=sigmaJ;
+Param.lambda=lambda;
+Param.r=r;
+% Merton risk-neutral drift
+Param.mu=r-0.5*volBS^2 ...
+            -lambda*(exp(muJ+0.5*sigmaJ^2)-1); 
+        
+[cMERTONfft, k ] = FFToption ( CharFunc, Param );
+K=S0*exp(k);   %%%%%%%K is normalized to S0 in FFT calc
+
+
+cMERTONanalytical = MertonSeriesCall (K,S0,T,volBS,...
+                        r, d, muJ, sigmaJ, lambda);    
+                    
+figure
+plot (K, cMERTONanalytical, K, S0*cMERTONfft1  , '+', K, S0-K)
+legend ('Analytical Merton', 'FFT Merton')
+xlim ([0.5, 1.5*S0])
+ylim([0.1 100])
+
+JumpStr(1)= {'Merton '};
+JumpStr(2)= {mmuJtext};
+JumpStr(3)= {msigmaJtext};
+JumpStr(4)= {lambdatext};
+text(0.8*S0, 0.6*S0, JumpStr)
+
+genStr(1)= {S0text};
+genStr(2)= {Ttext}; 
+text(0.2*S0, 0.2*S0, genStr);        
+
+%Srange=1:180;
+%for S=Srange
+ %   cBS(S) = BlackScholesCall (K,S,T,volBS,r,d);
+ %   cM(S) = MertonSeriesCall (K,S,T,volBS,...
+  %                      r, d, muJ, sigmaJ, lambda);    
+%end
+%plot (Srange, cM, Srange, cBS,'--')
+%axis tight
+%legend ('Merton','Black-Scholes','Location','NorthWest')
+%ylabel('Call Price')
+%xlabel('S_0')

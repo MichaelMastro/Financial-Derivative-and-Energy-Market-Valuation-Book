@@ -1,0 +1,76 @@
+% CYKalman fits 2-factor model parameters
+% to a set of (1,2,3 and 4 month) futures contracts. 
+% The hidden (factor) spot price and convenience yield 
+% is extracted over the entire time series
+function CYKalman(f)
+%flag=%'Normal-Joseph';%'scalar';%'Schmidt-SR';%'Carraro-S/SR';%
+tic
+close all
+clc
+set(0,'defaultaxeslinewidth',2); set(0,'defaultlinelinewidth',2);
+set(0,'defaultaxesFontWeight','bold');set(0,'defaulttextFontWeight','bold');    
+set(0,'defaultaxesfontsize',14); set(0,'defaulttextfontsize',14);
+
+global Obs CY         %global is poor programming technique 
+global TimeDelta    %but this simplifies the code
+global TimeMat MeasErr LnS %estimated Ln(Spot Price)
+global flag
+
+if (nargin == 0), flag='Normal-Joseph'
+end
+if (f==1 || f=='scalar')
+    flag='scalar'
+elseif (f==2 || f=='Schmidt-SR')
+    flag='Schmidt-SR'
+elseif (f==3 || f=='Carraro-S/SR')
+    flag='Carraro-S/SR'
+else
+    flag='Normal-Joseph'
+end
+
+TimeMat=[1,2,3,4]'*(1/12); %Four series of futures contracts 
+%with expiration of 1,2,3, and 4 months www.eia.doe.gov
+TimeDelta=(1/12);
+
+[d,S,f1,f2,f3, f4]=textread('CrudeOilHistT.txt','%f %f %f %f %f %f');
+Obs=log([f1,f2,f3,f4]); 
+samples=length(Obs(1,:));
+LnS=ones(samples,1);
+    RvarGuess=1e-3;
+    AlphaGuess=1; kappaGuess=0.14; 
+    sig1Guess=0.34; lambdaGuess=1.7;
+    sig2Guess=0.43; rhoGuess=0.74;
+    muGuess=0.58;
+param=zeros(7,1);
+	param(1)=AlphaGuess; param(2)=kappaGuess;  
+    param(3)=sig1Guess; param(4)=lambdaGuess;
+    param(5)=sig2Guess; param(6)=rhoGuess;
+    param(7)=muGuess; 
+    param(8:11)=RvarGuess;
+options=optimset('TolX',1e-1,'TolFun',1e-1,'Display','iter');%
+%options=optimset('Display','iter','MaxIter',100);
+%Set Tolerance to prevent unfeasible parameters
+pnew=fminsearch('CYloglikelihoodfn',param,options);
+fprintf(1, 'Estimation Type: ');
+disp(flag);
+fprintf(1, 'alphaStar \t kappa \t sigma1 \t lambda \t');
+fprintf(1, 'sigma2 \t rho \t mu  \n');
+fprintf(1, '%6.2f \t %6.2f \t %6.2f \t %6.2f \t', pnew(1:4)); 
+fprintf(1, '%6.2f \t %6.2f \t %6.2f \n', pnew(5:7)); 
+fprintf(1, 'Measurement Error Variance Terms  \n');
+fprintf(1, '%6.2e\t%6.2e\t%6.2e\t%6.2e\n', pnew(8:11));
+figure
+Time=1988+[0:length(LnS)-1]/12;
+subplot (2,1,1)
+plot(Time,LnS,Time,CY)
+title(flag)
+xlabel('Time [Years]'); ylabel('ln (Dollars)'); axis tight
+legend('Estimated Ln Spot','Convenience Yield','location','NorthWest')
+subplot (2,1,2)
+plot(Time,MeasErr)
+xlabel('Time [Years]'); ylabel('Measurement Error'); axis tight
+legend('1 Month Futures','2 Month Futures',...
+    '3 Month Futures','4 Month Futures','location','NorthWest')
+toc
+end
+%-------------------------------------------------------------
