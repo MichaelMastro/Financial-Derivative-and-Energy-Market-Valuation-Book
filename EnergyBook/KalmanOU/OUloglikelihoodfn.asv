@@ -1,0 +1,52 @@
+% OUloglikelihoodfn returns negative of log Maximum Likelihood Estimation
+% of process parameters (mu, lambda, sig) fit to observation data
+% with the Kalman filter
+function LikeSum = OUloglikelihoodfn(parameter)
+    global Obs; %use of global avoids passing large arrays
+    global TimeDelta; %generally global variables are bad programming
+%but I want to emphasize that only three variables (mu, lambda, sig) are 
+%optimized in OUloglikelihoodfn by fminsearch
+   
+	mu=parameter(1);
+	lambda=parameter(2);
+	sig=parameter(3);
+    %R=parameter(4)^2;%H=parameter(5)^2; %approximately known 
+
+%Kalman filter equations are described by 
+%x=S(ti)=C+M*S(ti-1)+w  w~N(0,Q)
+%y=Obs  =Hx+v           v~N(0,R)
+    H=1; %Directly Observing Price -> Observation Matrix = 1 (or Identity)
+    R=0.01; %Measurement Noise Covariance is small but non-zero
+    M=exp(-lambda*TimeDelta);
+    C=mu.*(1-M); %=mu.*(1-exp(-lambda*TimeDelta));
+    %Q=State Space Process Variance
+    %if (lambda==0) %include if-else if searching for process w/ lambda~0
+        Q= sig*sig*( (1-exp(-2.*lambda.*TimeDelta)) ./ (2.*lambda));
+    %else
+     %   Q= sig*sig*(TimeDelta)
+    %end
+    
+	nsamples=size(Obs,2);
+	LikeSum=0.5*nsamples*log(2*pi);
+    
+    x=zeros(1,nsamples);
+    x=inv(H)*Obs(1);
+    %Initialize Covariance to Unconditional Variance of State Process
+    P=inv(H)*Q*inv(H'); 
+        
+	for i=2:nsamples
+        x = M*x+C;       %x(k|k-1) State Prediction
+        P = M*P*M'+ Q;   %P(k|k-1) Covariance Prediction
+        
+        MR = Obs(i) - H*x ; %Measurement (Innovation)  Residual
+		CR = H*P*H' + R;    %Residual (Innovation) Covariance
+        K = P*H' * inv(CR); %Kalman Gain
+        
+        x = x + K*(MR); %x(k|k) State Correction bassed on observation res.
+        P = P - K*H*P;  %P(k|k) Covariance Correction
+ %the max. likelihood was multiplied by -1 to give a minimum in fminsearch
+      	LikeSum=LikeSum+0.5*log((CR))+0.5*MR'*inv(det(CR))*MR;%+1e-10;
+	end
+end
+
+

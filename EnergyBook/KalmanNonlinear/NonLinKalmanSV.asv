@@ -1,0 +1,106 @@
+function  [] = NonLinKalmanSV()
+% NonLinKalmanSV calls unscented transform filter based on 
+% Heston stochastic variance process 
+
+clear all
+close all
+clc
+
+set(0,'defaultaxeslinewidth',2); set(0,'defaultlinelinewidth',2);
+set(0,'defaultaxesFontWeight','bold');set(0,'defaulttextFontWeight','bold') 
+set(0,'defaultaxesfontsize',14); set(0,'defaulttextfontsize',14);
+
+% Global avoids passing dataset 
+global obsS obsC obsRF TimeDelta 
+% Retrieve Data from Filter for Plots
+global xVec MRvecS MRvecC SVec CVec
+global WeightVec PartVec
+
+obsS=load('PriceData.dat');
+ObsSig=load('VolData.dat');
+obsRF=load('RiskFree.dat');
+obsC=load('CallData.dat');
+len=length(obsS)
+
+TimeDelta=1/12; % 1 Month Forward Option
+Time=((1:len)/12)+1990; % Monthly Observations
+
+%Supply initial guess values
+    PiWGuess=0.15; 
+	SigGuess=0.32; 
+    KappaGuess=1.3;
+    ThetaGuess=0.13;
+    RhoGuess=-0.38;
+    xVec(1:2) = KappaGuess*ThetaGuess; 
+param=zeros(5,1);
+	param(1)=PiWGuess;
+    param(2)=SigGuess; 
+    param(3)=KappaGuess;
+    param(4)=ThetaGuess; 
+    param(5)=RhoGuess
+    options=optimset('MaxIter',3,'Display','iter');
+    % Somewhat optimized already for data 
+    
+%%%%%    
+code='UTHeston'%'PFHeston'%
+%%%%%%%%%
+pnew=fminsearch(code,param,options)
+PiWNew = pnew(1);
+SigNew = pnew(2);
+KappaNew = pnew(3);
+ThetaNew = pnew(4);
+RhoNew = pnew(5);
+
+fprintf(1, '\t\t\t\t PiW \t Sigma \t Kappa  Theta \t Rho \n');
+fprintf(1,'Estimated \t %6.2f  %6.2f \t %6.2f \t %6.2f \t %6.2f \n',...
+    PiWNew, SigNew, KappaNew, ThetaNew, RhoNew); 
+
+figure; 
+subplot (3,1,1)
+plot (Time(2:end), obsC(2:end), Time(2:end),...
+    CVec(2:end),'--',Time(2:end), MRvecC(2:end))    
+legend ('Obs. Call', 'Pred. Call','Option Price Error', ...
+   'Location','NorthWest' ); %
+xlabel('Time'); ylabel('Price'); axis tight;
+subplot (3,1,2)
+plot (Time(2:end),obsS(2:end), Time(2:end),...
+    exp(SVec(2:end)), '-.'); %,Time(2:end), MRvecS(2:end),'.-'
+legend ('Obs. Index','Pred. Index',...
+    'Location','NorthWest' );  %'Index Price Error'
+axis tight; xlabel('Time'); ylabel('Price')
+subplot (3,1,3)
+plot (Time, xVec, '-.', Time, ObsSig)
+legend ('Predicted Heston Var.', 'BS Implied Var.',...
+    'Location','NorthWest' ); axis tight; 
+xlabel('Time'); ylabel('Variance'); 
+
+if (code=='PFHeston')
+    NumPart=size(WeightVec,2) ;
+
+    RepTime=repmat(Time',1,NumPart);
+
+    figure
+    contour(RepTime,PartVec,WeightVec)
+    hold on
+    plot (Time, xVec, 'k')
+    legend ('Range of Particles', 'Predicted Heston Var.',...
+    'Location','NorthWest' ); axis tight; 
+    xlabel('Time'); ylabel('Variance'); 
+    
+    figure
+    plot (Time, xVec, 'k')
+    
+    hold on
+    for j=1:NumPart
+        for i=(1:len)
+            plot(Time(i),PartVec(i,j), 'o',...
+                'MarkerFaceColor','g', 'MarkerSize', 2+5*WeightVec(i,j))
+            hold on
+        end
+    end
+    legend ('Predicted Heston Var.','Particles',...
+        'Location','NorthWest' );    axis tight; 
+    xlabel('Time'); ylabel('Variance'); 
+end
+
+end
